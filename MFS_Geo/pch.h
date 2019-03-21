@@ -14,5 +14,7 @@
 #include <cstdlib>
 #include <cmath>
 #include <fstream>
+#include <string>
+#include <vector>
 
 #endif //PCH_H
