@@ -12,7 +12,7 @@ double qExact = GM / (R * R); // surface acceleration
 
 int N = 902; // dataset size;
 
-void printArray1(std::string name, double *a, int printLim) {
+void printArray1 (std::string name, double *a, int printLim) {
 	std::string offset = std::string((name + " = ").length() + 1, ' ');
 	std::cout << name << " = " << std::endl;
 	for (int i = 0; i < printLim; i++) {
@@ -25,7 +25,7 @@ void printArray1(std::string name, double *a, int printLim) {
 	std::cout << std::endl;
 }
 
-void printArrayVector3(std::string name, double *vx, double *vy, double *vz, int printLim) {
+void printArrayVector3 (std::string name, double *vx, double *vy, double *vz, int printLim) {
 	std::string offset = std::string((name + " = ").length() + 1, ' ');
 	std::cout << name << " = " << std::endl;
 	for (int i = 0; i < printLim; i++) {
@@ -38,7 +38,7 @@ void printArrayVector3(std::string name, double *vx, double *vy, double *vz, int
 	std::cout << std::endl;
 }
 
-void printArray2(std::string name, double **A, int printLim) {
+void printArray2 (std::string name, double **A, int printLim) {
 	std::string offset = std::string((name + " = ").length() + 1, ' ');
 	std::cout << name << " = " << std::endl;
 	for (int i = 0; i < printLim; i++) {
@@ -67,7 +67,7 @@ void printArray2(std::string name, double **A, int printLim) {
 	std::cout << std::endl;
 }
 
-void loadPointData(double *x, double *y, double *z, double *sx, double *sy, double *sz, double *q, double *d2U) {
+void loadPointData (double *x, double *y, double *z, double *sx, double *sy, double *sz, double *q, double *d2U) {
 	printf("Loading data ... \n");
 
 	std::fstream dataFile;
@@ -119,7 +119,7 @@ void loadPointData(double *x, double *y, double *z, double *sx, double *sy, doub
 	}
 }
 
-void getMatrices(double **dG, double **G, double *x, double *y, double *z, double *sx, double *sy, double *sz) {
+void getMatrices (double **dG, double **G, double *x, double *y, double *z, double *sx, double *sy, double *sz) {
 	for (int i = 0; i < N; i++) {
 		for (int j = 0; j < N; j++) {
 			double dx = x[i] - sx[j];
@@ -138,6 +138,159 @@ void getMatrices(double **dG, double **G, double *x, double *y, double *z, doubl
 			G[i][j] = 1 / (4 * M_PI * d_norm);
 		}
 	}
+}
+
+double vectorDot (double *a, double *b) {
+	double result = 0.;
+	for (int i = 0; i < N; i++) {
+		result += a[i] * b[i];
+	}
+	return result;
+}
+
+double vectorNorm(double *a) {
+	return sqrt(vectorDot(a,a));
+}
+
+void mmultVector (double **A, double *x, double *result) {
+	for (int i = 0; i < N; i++) {
+		result[i] = 0.;
+		for (int j = 0; j < N; j++) {
+			result[i] += A[i][j] * x[j];
+		}
+	}
+}
+
+void smultVector (double s, double *x, double *result) {
+	for (int i = 0; i < N; i++) result[i] *= s;
+}
+
+void subVectors (double *a, double *b, double *result) {
+	for (int i = 0; i < N; i++) result[i] = a[i] - b[i];
+}
+
+void addVectors (double *a, double *b, double *result) {
+	for (int i = 0; i < N; i++) result[i] = a[i] + b[i];
+}
+
+void copyVector(double *original, double *target) {
+	for (int i = 0; i < N; i++) target[i] = original[i];
+}
+
+void Bi_CGSTAB_solve (double **A, double *b, double *x) {
+	// ctrl. constants
+	int maxIter = 10;
+	double tol = 1E-6;
+
+	// iter vectors
+	double *x_curr = new double[N];
+	double *x_next = new double[N];
+
+	double *r_curr = new double[N];
+	double *r_next = new double[N];
+
+	double *rp0 = new double[N];
+
+	double *p_curr = new double[N];
+	double *p_next = new double[N];
+
+	double *s = new double[N];
+
+	double *tmp = new double[N];
+	double *tmp1 = new double[N];
+
+	// iter scalars
+	double alpha, beta, omega;
+
+	// x0 = (1,1,...,1)
+	for (int i = 0; i < N; i++) x_curr[i] = 1.;
+	// r0 = b - A x0
+	// choose rp0 such that <r0, rp0> != 0
+	// p0 = r0
+	for (int i = 0; i < N; i++) {
+		r_curr[i] = b[i];
+		for (int j = 0; j < N; j++) {
+			r_curr[i] -= A[i][j] * x_curr[j];
+		}
+		rp0[i] = r_curr[i] + 10;
+		p_curr[i] = r_curr[i];
+	}
+	std::cout << "==================================================" << std::endl;
+	std::cout << "----------- Initializing Bi-CGSTAB Method --------" << std::endl;
+	printArray1("r0", r_curr, 5);
+	printArray1("p0", p_curr, 5);
+	printArray1("rp0", rp0, 5);
+
+	std::cout << "--------------------------------------------------" << std::endl;
+	std::cout << "------------ Launching iterations ----------------" << std::endl;
+	// begin iterations
+	for (int k = 0; k < maxIter; k++) {
+		// alpha[k] = <r[k], rp0> / <Ap[k], rp0>
+		mmultVector(A, p_curr, tmp);
+		std::cout << "<A p[k], rp0> = " << vectorDot(tmp, rp0) << std::endl;
+		alpha = vectorDot(r_curr, rp0) / vectorDot(tmp, rp0);
+		std::cout << "alpha = " << alpha << std::endl;
+		// s[k] = r[k] - alpha[k] * A p[k]
+		smultVector(alpha, tmp, tmp);
+		subVectors(r_curr, tmp, s);
+		printArray1("s", s, 5);
+
+		if (vectorNorm(s) < tol) {
+			// x[k + 1] = x[k] + alpha[k] * p[k]
+			smultVector(alpha, p_curr, tmp);
+			addVectors(x_curr, tmp, x_next);
+			printArray1("x", x_next, 5);
+			break;
+		}
+
+		// omega[k] = <A s[k], s[k]> / <A s[k], A s[k]>
+		mmultVector(A, s, tmp);
+		omega = vectorDot(tmp, s) / vectorDot(tmp, tmp);
+		std::cout << "omega = " << omega << std::endl;
+		// x[k + 1] = x[k] + alpha[k] * p[k] + omega[k] * s[k]
+		smultVector(alpha, p_curr, tmp);
+		addVectors(x_curr, tmp, tmp);
+		smultVector(omega, s, tmp1);
+		addVectors(tmp, tmp1, x_next);
+		printArray1("x", x_next, 5);
+		// r[k + 1] = s[k] - omega[k] * A s[k]
+		mmultVector(A, s, tmp);
+		smultVector(omega, tmp, tmp);
+		subVectors(s, tmp, r_next);
+		printArray1("r", r_next, 5);
+		if (vectorNorm(r_next) < tol) {
+			break;
+		}
+		// beta[k] = (alpha[k] / omega[k]) * <r[k + 1], rp0> / <r[k], rp0>
+		beta = (alpha / omega) * vectorDot(r_next, rp0) / vectorDot(r_curr, rp0);
+		std::cout << "beta = " << beta << std::endl;
+		// p[k + 1] = r[k + 1] + beta[k] * (p[k] - omega[k] * A p[k])
+		mmultVector(A, p_curr, tmp);
+		smultVector(omega, tmp, tmp);
+		subVectors(p_curr, tmp, tmp);
+		smultVector(beta, tmp, tmp);
+		addVectors(r_next, tmp, p_next);
+		printArray1("p", p_next, 5);
+		if (fabs(vectorDot(r_next, rp0)) < tol) {
+			// rp0 = r[k + 1]; p[k + 1] = r[k + 1]
+			copyVector(r_next, rp0);
+			copyVector(r_next, p_next);
+			std::cout << "copying vectors: rp0 = r[k + 1]; p[k + 1] = r[k + 1]" << std::endl;
+		}
+		// current = next
+		copyVector(x_next, x_curr);
+		copyVector(r_next, r_curr);
+		copyVector(p_next, p_curr);
+		std::cout << "===> finishing iter " << k << std::endl;
+	}
+
+	copyVector(x_next, x); // result: x = x_next
+
+	// clean up
+	delete[] x_curr; delete[] x_next;
+	delete[] r_curr; delete[] r_next;
+	delete[] p_curr; delete[] p_next;
+	delete[] s; delete[] tmp; delete[] tmp1;
 }
 
 int main() {
@@ -171,5 +324,25 @@ int main() {
 
 	printArray2("dG/dn", dG, 4);
 	printArray2("G", G, 4);
+
+	double *alphas = new double[N]; // unknown alpha coeffs
+
+	// Bi-CGSTAB solve:
+	Bi_CGSTAB_solve(dG, q, alphas);
+
+	// print solution
+	printArray1("alphas", alphas, 8);
+
+	// clean up
+	delete[] x; delete[] y; delete[] z;
+	delete[] sx; delete[] sy; delete[] sz;
+	delete[] q; delete[] d2U;
+
+	for (int i = 0; i < N; i++) {
+		delete[] dG[i]; delete[] G[i];
+	}
+	delete[] dG; delete[] G;
+
+	return 1;
 }
 

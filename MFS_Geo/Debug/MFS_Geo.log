@@ -1,2 +1,2 @@
 ﻿  MFS_Geo.cpp
-  MFS_Geo.vcxproj -> D:\Martin Data\ParallelProgramming\MFS_Geo\Debug\MFS_Geo.exe
+d:\martin data\parallelprogramming\mfs_geo\mfs_geo\mfs_geo.cpp(4): error C2859: D:\Martin Data\ParallelProgramming\MFS_Geo\MFS_Geo\Debug\vc141.idb is not the idb file that was used when this precompiled header was created, recreate the precompiled header.
