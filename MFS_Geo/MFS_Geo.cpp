@@ -169,7 +169,7 @@ void mmultVector (double **A, double *x, double *result) {
 }
 
 void smultVector (double s, double *x, double *result) {
-	for (int i = 0; i < N; i++) result[i] *= s;
+	for (int i = 0; i < N; i++) result[i] = x[i] * s;
 }
 
 void subVectors (double *a, double *b, double *result) {
@@ -225,37 +225,32 @@ void Bi_CGSTAB_solve (double **A, double *b, double *x) {
 	std::cout << "==================================================" << std::endl;
 	std::cout << "----------- Initializing Bi-CGSTAB Method --------" << std::endl;
 	printArray2("systemMatrix", A, 4);
+	printArray1("systemRhs", b, 5);
+	printArray1("x0", x_curr, 2);
 	printArray1("r0", r_curr, 5);
-	printArray1("p0", p_curr, 5);
-	printArray1("rp0", rp0, 5);
 
 	std::cout << "--------------------------------------------------" << std::endl;
 	std::cout << "------------ Launching iterations ----------------" << std::endl;
 	// begin iterations
 	for (int k = 0; k < maxIter; k++) {
+		std::cout << "::: iter : " << k << std::endl;
 		// alpha[k] = <r[k], rp0> / <Ap[k], rp0>
 		mmultVector(A, p_curr, tmp);
-		printArray1("A p[k]", tmp, 5);
-		std::cout << "<A p[k], rp0> = " << vectorDot(tmp, rp0) << std::endl;
 		alpha = vectorDot(r_curr, rp0) / vectorDot(tmp, rp0);
-		std::cout << "alpha = " << alpha << std::endl;
 		// s[k] = r[k] - alpha[k] * A p[k]
 		smultVector(alpha, tmp, tmp);
 		subVectors(r_curr, tmp, s);
-		printArray1("s", s, 5);
 
 		if (vectorNorm(s) < tol) {
 			// x[k + 1] = x[k] + alpha[k] * p[k]
 			smultVector(alpha, p_curr, tmp);
 			addVectors(x_curr, tmp, x_next);
-			printArray1("x", x_next, 5);
 			break;
 		}
 
 		// omega[k] = <A s[k], s[k]> / <A s[k], A s[k]>
 		mmultVector(A, s, tmp);
 		omega = vectorDot(tmp, s) / vectorDot(tmp, tmp);
-		std::cout << "omega = " << omega << std::endl;
 		// x[k + 1] = x[k] + alpha[k] * p[k] + omega[k] * s[k]
 		smultVector(alpha, p_curr, tmp);
 		addVectors(x_curr, tmp, tmp);
@@ -266,25 +261,21 @@ void Bi_CGSTAB_solve (double **A, double *b, double *x) {
 		mmultVector(A, s, tmp);
 		smultVector(omega, tmp, tmp);
 		subVectors(s, tmp, r_next);
-		printArray1("r", r_next, 5);
 		if (vectorNorm(r_next) < tol) {
 			break;
 		}
 		// beta[k] = (alpha[k] / omega[k]) * <r[k + 1], rp0> / <r[k], rp0>
 		beta = (alpha / omega) * vectorDot(r_next, rp0) / vectorDot(r_curr, rp0);
-		std::cout << "beta = " << beta << std::endl;
 		// p[k + 1] = r[k + 1] + beta[k] * (p[k] - omega[k] * A p[k])
 		mmultVector(A, p_curr, tmp);
 		smultVector(omega, tmp, tmp);
 		subVectors(p_curr, tmp, tmp);
 		smultVector(beta, tmp, tmp);
 		addVectors(r_next, tmp, p_next);
-		printArray1("p", p_next, 5);
 		if (fabs(vectorDot(r_next, rp0)) < tol) {
 			// rp0 = r[k + 1]; p[k + 1] = r[k + 1]
 			copyVector(r_next, rp0);
 			copyVector(r_next, p_next);
-			std::cout << "copying vectors: rp0 = r[k + 1]; p[k + 1] = r[k + 1]" << std::endl;
 		}
 		// current = next
 		copyVector(x_next, x_curr);
@@ -341,7 +332,7 @@ int main() {
 	Bi_CGSTAB_solve(dG, q, alphas);
 
 	// print solution
-	// printArray1("alphas", alphas, 8);
+	printArray1("alphas", alphas, 8);
 
 	// clean up
 	delete[] x; delete[] y; delete[] z;
