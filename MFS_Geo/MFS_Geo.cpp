@@ -5,7 +5,7 @@
 
 // global constants
 double R = 6371.; // Earth radius [km]
-double r_remaining = 8.; // [km]
+double r_remaining = 11; // [km]
 double GM = 389600.5; // [km^3 * s^(-1)]
 double uExact = GM / R; // exact surface potential
 double qExact = GM / (R * R); // surface acceleration
@@ -98,19 +98,18 @@ void loadPointData (double *x, double *y, double *z, double *sx, double *sy, dou
 			double Q = std::stod(tokens[3]);
 			double D2U = std::stod(tokens[4]);
 
-			// std::cout << B << " " << L << " " << H << " " << Q << " " << D2U << std::endl;
+			sx[i] = R * cos(B) * cos(L);
+			sy[i] = R * cos(B) * sin(L);
+			sz[i] = R * sin(B);
 
-			sx[i] = 1000 * R * cos(B) * sin(L);
-			sy[i] = 1000 * R * cos(B) * sin(L);
-			sz[i] = 1000 * R * sin(B);
-
-			x[i] = (1000 * R + H + 1000 * r_remaining) * cos(B) * sin(L);
-			y[i] = (1000 * R + H + 1000 * r_remaining) * cos(B) * sin(L);
-			z[i] = (1000 * R + H + 1000 * r_remaining) * sin(B);
+			x[i] = (R + 0.001 * H + r_remaining) * cos(B) * cos(L);
+			y[i] = (R + 0.001 * H + r_remaining) * cos(B) * sin(L);
+			z[i] = (R + 0.001 * H + r_remaining) * sin(B);
 
 			q[i] = Q;
 			d2U[i] = D2U;
 
+			// std::cout << B << " " << L << " " << H << " " << Q << " " << D2U << std::endl;
 			// std::cout << sx[i] << " " << sy[i] << " " << sz[i] << " " << x[i] << " " << y[i] << " " << z[i] << " " << q[i] << " " << d2U[i] << std::endl << std::endl;
 			i++;
 		}
@@ -136,6 +135,14 @@ void getMatrices (double **dG, double **G, double *x, double *y, double *z, doub
 
 			dG[i][j] = dot / (4 * M_PI * d_norm * d_norm * d_norm); // dG[i][j]/dn[i]
 			G[i][j] = 1 / (4 * M_PI * d_norm);
+			if (isnan(dG[i][j])) {
+				std::cout << "NAN!: dG[" << i << "][" << j << "] : d_norm = " << d_norm << std::endl;
+				std::cout << "dx = " << dx << ", dy = " << dy << ", dz = " << dz << std::endl;
+			}
+			if (isnan(G[i][j])) {
+				std::cout << "NAN!: G[" << i << "][" << j << "] : d_norm = " << d_norm << std::endl;
+				std::cout << "dx = " << dx << ", dy = " << dy << ", dz = " << dz << std::endl;
+			}
 		}
 	}
 }
@@ -179,7 +186,7 @@ void copyVector(double *original, double *target) {
 
 void Bi_CGSTAB_solve (double **A, double *b, double *x) {
 	// ctrl. constants
-	int maxIter = 10;
+	int maxIter = 100;
 	double tol = 1E-6;
 
 	// iter vectors
@@ -203,7 +210,7 @@ void Bi_CGSTAB_solve (double **A, double *b, double *x) {
 	double alpha, beta, omega;
 
 	// x0 = (1,1,...,1)
-	for (int i = 0; i < N; i++) x_curr[i] = 1.;
+	for (int i = 0; i < N; i++) x_curr[i] = 1000.;
 	// r0 = b - A x0
 	// choose rp0 such that <r0, rp0> != 0
 	// p0 = r0
@@ -212,11 +219,12 @@ void Bi_CGSTAB_solve (double **A, double *b, double *x) {
 		for (int j = 0; j < N; j++) {
 			r_curr[i] -= A[i][j] * x_curr[j];
 		}
-		rp0[i] = r_curr[i] + 10;
+		rp0[i] = r_curr[i] + 100;
 		p_curr[i] = r_curr[i];
 	}
 	std::cout << "==================================================" << std::endl;
 	std::cout << "----------- Initializing Bi-CGSTAB Method --------" << std::endl;
+	printArray2("systemMatrix", A, 4);
 	printArray1("r0", r_curr, 5);
 	printArray1("p0", p_curr, 5);
 	printArray1("rp0", rp0, 5);
@@ -227,6 +235,7 @@ void Bi_CGSTAB_solve (double **A, double *b, double *x) {
 	for (int k = 0; k < maxIter; k++) {
 		// alpha[k] = <r[k], rp0> / <Ap[k], rp0>
 		mmultVector(A, p_curr, tmp);
+		printArray1("A p[k]", tmp, 5);
 		std::cout << "<A p[k], rp0> = " << vectorDot(tmp, rp0) << std::endl;
 		alpha = vectorDot(r_curr, rp0) / vectorDot(tmp, rp0);
 		std::cout << "alpha = " << alpha << std::endl;
@@ -327,11 +336,12 @@ int main() {
 
 	double *alphas = new double[N]; // unknown alpha coeffs
 
+
 	// Bi-CGSTAB solve:
 	Bi_CGSTAB_solve(dG, q, alphas);
 
 	// print solution
-	printArray1("alphas", alphas, 8);
+	// printArray1("alphas", alphas, 8);
 
 	// clean up
 	delete[] x; delete[] y; delete[] z;
