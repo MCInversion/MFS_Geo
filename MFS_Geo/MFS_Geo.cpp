@@ -5,6 +5,7 @@
 
 // global constants
 double R = 6371.; // Earth radius [km]
+double r_remaining = 8.; // [km]
 double GM = 389600.5; // [km^3 * s^(-1)]
 double uExact = GM / R; // exact surface potential
 double qExact = GM / (R * R); // surface acceleration
@@ -17,7 +18,7 @@ void printArray1(std::string name, double *a, int printLim) {
 	for (int i = 0; i < printLim; i++) {
 		std::cout << offset << a[i] << std::endl;
 	}
-	for (int i = 0; i < 3; i++) std::cout << offset << "." << std::endl;
+	for (int i = 0; i < 3; i++) std::cout << offset << "  ." << std::endl;
 	for (int i = N - printLim; i < N; i++) {
 		std::cout << offset << a[i] << std::endl;
 	}
@@ -30,9 +31,38 @@ void printArrayVector3(std::string name, double *vx, double *vy, double *vz, int
 	for (int i = 0; i < printLim; i++) {
 		std::cout << offset << vx[i] << " " << vy[i] << " " << vz[i] << std::endl;
 	}
-	for (int i = 0; i < 3; i++) std::cout << offset << "." << std::endl;
+	for (int i = 0; i < 3; i++) std::cout << offset << "  ." << std::endl;
 	for (int i = N - printLim; i < N; i++) {
 		std::cout << offset << vx[i] << " " << vy[i] << " " << vz[i] << std::endl;
+	}
+	std::cout << std::endl;
+}
+
+void printArray2(std::string name, double **A, int printLim) {
+	std::string offset = std::string((name + " = ").length() + 1, ' ');
+	std::cout << name << " = " << std::endl;
+	for (int i = 0; i < printLim; i++) {
+		std::cout << offset;
+		for (int j = 0; j < printLim; j++) {
+			std::cout << A[i][j] << " ";
+		}
+		std::cout << "  ...  ";
+		for (int j = N - printLim; j < N; j++) {
+			std::cout << A[i][j] << " ";
+		}
+		std::cout << std::endl;
+	}
+	for (int i = 0; i < 3; i++) std::cout << offset << "  ." << std::endl;
+	for (int i = N - printLim; i < N; i++) {
+		std::cout << offset;
+		for (int j = 0; j < printLim; j++) {
+			std::cout << A[i][j] << " ";
+		}
+		std::cout << "  ...  ";
+		for (int j = N - printLim; j < N; j++) {
+			std::cout << A[i][j] << " ";
+		}
+		std::cout << std::endl;
 	}
 	std::cout << std::endl;
 }
@@ -74,9 +104,9 @@ void loadPointData(double *x, double *y, double *z, double *sx, double *sy, doub
 			sy[i] = 1000 * R * cos(B) * sin(L);
 			sz[i] = 1000 * R * sin(B);
 
-			x[i] = (1000 * R - H) * cos(B) * sin(L);
-			y[i] = (1000 * R - H) * cos(B) * sin(L);
-			z[i] = (1000 * R - H) * sin(B);
+			x[i] = (1000 * R + H + 1000 * r_remaining) * cos(B) * sin(L);
+			y[i] = (1000 * R + H + 1000 * r_remaining) * cos(B) * sin(L);
+			z[i] = (1000 * R + H + 1000 * r_remaining) * sin(B);
 
 			q[i] = Q;
 			d2U[i] = D2U;
@@ -89,22 +119,23 @@ void loadPointData(double *x, double *y, double *z, double *sx, double *sy, doub
 	}
 }
 
-double norm3(double x, double y, double z) {
-	return sqrt(x * x + y * y + z * z);
-}
-
-double dist3(double ax, double ay, double az, double bx, double by, double bz) {
-	return norm3(
-		bx - ax,
-		by - ay,
-		bz - az
-	);
-}
-
-void getMatrix(double **M, double *x, double *y, double *z, double *sx, double *sy, double *sz) {
+void getMatrices(double **dG, double **G, double *x, double *y, double *z, double *sx, double *sy, double *sz) {
 	for (int i = 0; i < N; i++) {
 		for (int j = 0; j < N; j++) {
+			double dx = x[i] - sx[j];
+			double dy = y[i] - sy[j];
+			double dz = z[i] - sz[j];
 
+			double d_norm = sqrt(dx * dx + dy * dy + dz * dz);
+
+			double nx = sx[i] / R;
+			double ny = sy[i] / R;
+			double nz = sz[i] / R;
+
+			double dot = dx * nx + dy * ny + dz * nz;
+
+			dG[i][j] = dot / (4 * M_PI * d_norm * d_norm * d_norm); // dG[i][j]/dn[i]
+			G[i][j] = 1 / (4 * M_PI * d_norm);
 		}
 	}
 }
@@ -129,7 +160,16 @@ int main() {
 	printArray1("q", q, 5);
 	printArray1("d2U/dn2", d2U, 5);
 
-	double **M = new double*[N];
-	for (int i = 0; i < N; i++) M[i] = new double[N];
+	double **dG = new double*[N];
+	double **G = new double*[N];
+	for (int i = 0; i < N; i++) {
+		dG[i] = new double[N];
+		G[i] = new double[N];
+	}
+
+	getMatrices(dG, G, x, y, z, sx, sy, sz);
+
+	printArray2("dG/dn", dG, 4);
+	printArray2("G", G, 4);
 }
 
