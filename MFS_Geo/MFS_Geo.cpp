@@ -326,13 +326,18 @@ int main() {
 	printArray2("G", G, 4);
 
 	double *alphas = new double[N]; // unknown alpha coeffs
-
+	double *u = new double[N]; // potential solution
 
 	// Bi-CGSTAB solve:
 	Bi_CGSTAB_solve(dG, q, alphas);
 
 	// print solution
 	printArray1("alphas", alphas, 8);
+
+	// potential solution G . alphas = u
+	mmultVector(G, alphas, u);
+
+	printArray1("u", u, 8);
 
 	// clean up
 	delete[] x; delete[] y; delete[] z;
