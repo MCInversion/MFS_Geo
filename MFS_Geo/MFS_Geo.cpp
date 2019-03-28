@@ -12,9 +12,9 @@ double r_remaining = 500000; // [m]
 
 // const char* dataFilename = "BL-902.dat";
 // const char* dataFilename = "BL-1298.dat";
-// const char* dataFilename = "BL-3602.dat";
-const char* dataFilename = "BL-8102.dat";
-int N = 8102; // dataset size;
+const char* dataFilename = "BL-3602.dat";
+// const char* dataFilename = "BL-8102.dat";
+int N = 3602; // dataset size;
 
 void printArray1 (std::string name, double *a, int printLim, bool inRow = true) {
 	if (inRow) {
@@ -149,9 +149,9 @@ void getMatrices (double **dG, double **G, double *x, double *y, double *z, doub
 
 			double d_norm = sqrt(dx * dx + dy * dy + dz * dz);
 
-			double nx = sx[i] / R;
-			double ny = sy[i] / R;
-			double nz = sz[i] / R;
+			double nx = sx[i] / (R - r_remaining);
+			double ny = sy[i] / (R - r_remaining);
+			double nz = sz[i] / (R - r_remaining);
 
 			double dot = dx * nx + dy * ny + dz * nz;
 
@@ -208,8 +208,8 @@ void copyVector(double *original, double *target) {
 
 void Bi_CGSTAB_solve (double **A, double *b, double *x) {
 	// ctrl. constants
-	int maxIter = 100;
-	double tol = 2e-3;
+	int maxIter = 1000;
+	double tol = 1e-5;
 
 	// iter vectors
 	double *x_curr = new double[N];
