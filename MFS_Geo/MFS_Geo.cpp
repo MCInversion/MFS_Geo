@@ -1,6 +1,3 @@
-// MFS_Geo.cpp : This file contains the 'main' function. Program execution begins and ends there.
-//
-
 #include "pch.h"
 
 // global constants
@@ -349,12 +346,18 @@ int main() {
 	double *q = new double[N];
 	double *d2U = new double[N];
 
+	auto startLoad = std::chrono::high_resolution_clock::now();
 	loadPointData(B, L, H, x, y, z, sx, sy, sz, q, d2U);
+	auto endLoad = std::chrono::high_resolution_clock::now();
 
+	auto startPrint3 = std::chrono::high_resolution_clock::now();
 	printArrayVector3("x", x, y, z, 5);
+	auto endPrint3 = std::chrono::high_resolution_clock::now();
 	printArrayVector3("s", sx, sy, sz, 5);
 
+	auto startPrint1 = std::chrono::high_resolution_clock::now();
 	printArray1("q", q, 5);
+	auto endPrint1 = std::chrono::high_resolution_clock::now();
 	printArray1("d2U/dn2", d2U, 5);
 
 	double **dG = new double*[N];
@@ -364,26 +367,69 @@ int main() {
 		G[i] = new double[N];
 	}
 
+	auto startMatrixGen = std::chrono::high_resolution_clock::now();
 	getMatrices(dG, G, x, y, z, sx, sy, sz);
+	auto endMatrixGen = std::chrono::high_resolution_clock::now();
 
+	auto startMatrixPrint = std::chrono::high_resolution_clock::now();
 	printArray2("dG/dn", dG, 4);
+	auto endMatrixPrint = std::chrono::high_resolution_clock::now();
 	printArray2("G", G, 4);
 
 	double *alphas = new double[N]; // unknown alpha coeffs
 	double *u = new double[N]; // potential solution
 
 	// Bi-CGSTAB solve:
-	Bi_CGSTAB_solve(dG, q, alphas);
+	// NOTE: This has to be done inside the main() function
+	auto startBi_CGSTAB = std::chrono::high_resolution_clock::now();
+	Bi_CGSTAB_solve(dG, q, alphas); // you had a good life, but I can't use you! :'(
+	auto endBi_CGSTAB = std::chrono::high_resolution_clock::now();
+
+	// =========================================================================================
+	// ========== Bi-CGSTAB Implementation inside main() =======================================
+
+
+
+	// ========================= Solution done ===============================================
 
 	// print solution
 	printArray1("alphas", alphas, 8);
 
 	// potential solution G . alphas = u
+	auto startMMult = std::chrono::high_resolution_clock::now();
 	mmultVector(G, alphas, u);
+	auto endMMult = std::chrono::high_resolution_clock::now();
 
 	printArray1("u", u, 8);
 
 	writeData(B, L, u);
+
+	// ================================ Summary ============================================
+
+	printf("\n============================================================================\n");
+	printf("======================== Program summary =====================================\n");
+	std::cout << "data size = " << N << std::endl;
+	std::chrono::duration<double> elapsedTotal = (endMMult - startLoad);
+	std::cout << "total runtime :    " << elapsedTotal.count() << " s" << std::endl;
+	std::cout << "--------------------------------------------------------------------------" << std::endl;
+	std::chrono::duration<double> elapsedLoad = (endLoad - startLoad);
+	std::cout << "loading data file :    " << elapsedLoad.count() << " s" << std::endl;
+	std::chrono::duration<double> elapsedPrint3 = (endPrint3 - startPrint3);
+	std::cout << "printing vector 3 array :    " << elapsedPrint3.count() << " s" << std::endl;
+	std::chrono::duration<double> elapsedPrint1 = (endPrint1 - startPrint1);
+	std::cout << "printing vector 1 array :    " << elapsedPrint3.count() << " s" << std::endl;
+	std::chrono::duration<double> elapsedPrintMatrix = (endMatrixPrint - startMatrixPrint);
+	std::cout << "printing matrix array :    " << elapsedPrintMatrix.count() << " s" << std::endl;
+	std::cout << "..........................................................................." << std::endl;
+	std::chrono::duration<double> elapsedMatrixGen = (endMatrixGen - startMatrixGen);
+	std::cout << "generating system matrix :    " << elapsedMatrixGen.count() << " s" << std::endl;
+	std::chrono::duration<double> elapsedMMult = (endMMult - startMMult);
+	std::cout << "matrix * vector multiplication :    " << elapsedMMult.count() << " s" << std::endl;
+	std::cout << ".... Bi-CGSTAB: .........................................................." << std::endl;
+	std::chrono::duration<double> elapsedBi_CGSTAB = (endBi_CGSTAB - startBi_CGSTAB);
+	std::cout << "Bi-CGSTAB solution :    " << elapsedBi_CGSTAB.count() << " s" << std::endl;
+	std::cout << "--------------------------------------------------------------------------" << std::endl;
+
 
 	// clean up
 	delete[] x; delete[] y; delete[] z;
