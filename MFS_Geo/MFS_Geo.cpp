@@ -368,7 +368,36 @@ int main() {
 	}
 
 	auto startMatrixGen = std::chrono::high_resolution_clock::now();
-	getMatrices(dG, G, x, y, z, sx, sy, sz);
+	// getMatrices(dG, G, x, y, z, sx, sy, sz); // :(
+	// Calculating system matrices from point data:
+
+	for (int i = 0; i < N; i++) {
+		for (int j = 0; j < N; j++) {
+			double dx = x[i] - sx[j];
+			double dy = y[i] - sy[j];
+			double dz = z[i] - sz[j];
+
+			double d_norm = sqrt(dx * dx + dy * dy + dz * dz);
+
+			double nx = sx[i] / (R - r_remaining);
+			double ny = sy[i] / (R - r_remaining);
+			double nz = sz[i] / (R - r_remaining);
+
+			double dot = dx * nx + dy * ny + dz * nz;
+
+			dG[i][j] = dot / (4 * M_PI * d_norm * d_norm * d_norm); // dG[i][j]/dn[i]
+			G[i][j] = 1 / (4 * M_PI * d_norm);
+			if (isnan(dG[i][j])) {
+				std::cout << "NAN!: dG[" << i << "][" << j << "] : d_norm = " << d_norm << std::endl;
+				std::cout << "dx = " << dx << ", dy = " << dy << ", dz = " << dz << std::endl;
+			}
+			if (isnan(G[i][j])) {
+				std::cout << "NAN!: G[" << i << "][" << j << "] : d_norm = " << d_norm << std::endl;
+				std::cout << "dx = " << dx << ", dy = " << dy << ", dz = " << dz << std::endl;
+			}
+		}
+	}
+
 	auto endMatrixGen = std::chrono::high_resolution_clock::now();
 
 	auto startMatrixPrint = std::chrono::high_resolution_clock::now();
