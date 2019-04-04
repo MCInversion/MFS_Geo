@@ -560,7 +560,14 @@ int main() {
 
 	// potential solution G . alphas = u
 	auto startMMult = std::chrono::high_resolution_clock::now();
-	mmultVector(G, alphas, u);
+	
+	for (int i = 0; i < N; i++) {
+		u[i] = 0;
+		for (int j = 0; j < N; j++) {
+			u[i] += G[i][j] * alphas[j];
+		}
+	}
+
 	auto endMMult = std::chrono::high_resolution_clock::now();
 
 	printArray1("u", u, 8);
