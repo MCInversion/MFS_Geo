@@ -10,5 +10,6 @@
 #include <string>
 #include <vector>
 #include <chrono>
+#include "mpi.h"
 
 #endif //PCH_H

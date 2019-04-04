@@ -8,10 +8,10 @@ double r_remaining = 500000; // [m]
 //double qExact = GM / (R * R); // surface acceleration
 
 // const char* dataFilename = "BL-902.dat";
-const char* dataFilename = "BL-1298.dat";
-// const char* dataFilename = "BL-3602.dat";
+// const char* dataFilename = "BL-1298.dat";
+const char* dataFilename = "BL-3602.dat";
 // const char* dataFilename = "BL-8102.dat";
-int N = 1298; // dataset size;
+int N = 3602; // dataset size;
 
 void printArray1 (std::string name, double *a, int printLim, bool inRow = true) {
 	if (inRow) {
@@ -330,7 +330,7 @@ void writeData(double *B, double *L, double *u) {
 	dataOut.close();
 }
 
-int main() {
+int main(int argc, char **argv) {
 	double *B = new double[N];
 	double *L = new double[N];
 	double *H = new double[N];
@@ -346,64 +346,147 @@ int main() {
 	double *q = new double[N];
 	double *d2U = new double[N];
 
+	// MPI Vars:
+	int nprocs, myrank;
+	int istart, iend, nlocal = 0, nlast = 0;
+
+	MPI_Init(&argc, &argv);
+	MPI_Comm_size(MPI_COMM_WORLD, &nprocs);
+	MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
+
 	auto startLoad = std::chrono::high_resolution_clock::now();
-	loadPointData(B, L, H, x, y, z, sx, sy, sz, q, d2U);
+	if (myrank == 0) {		
+		// loadPointData(B, L, H, x, y, z, sx, sy, sz, q, d2U); :(
+		printf("Loading data ... \n");
+
+		std::fstream dataFile;
+		dataFile.open(dataFilename, std::fstream::in);
+
+		if (!dataFile.is_open()) {
+			printf("Unable to open file %s\n", dataFilename);
+			return 0;
+		}
+		else {
+			printf("%s opened successfully\n", dataFilename);
+
+			std::string line;
+			int i = 0;
+
+			while (std::getline(dataFile, line)) {
+				std::vector<std::string> tokens;
+				std::string s_delimiter = " ";
+				size_t pos = 0;
+				while (pos < 100) {
+					pos = line.find(s_delimiter);
+					tokens.push_back(line.substr(0, line.find(s_delimiter)));
+					line = line.erase(0, pos + s_delimiter.length());
+				}
+
+				B[i] = std::stod(tokens[0]);
+				L[i] = std::stod(tokens[1]);
+				H[i] = std::stod(tokens[2]);
+				double Q = std::stod(tokens[3]);
+				double D2U = std::stod(tokens[4]);
+
+				sx[i] = (R - r_remaining) * cos(B[i] * M_PI / 180) * cos(L[i] * M_PI / 180);
+				sy[i] = (R - r_remaining) * cos(B[i] * M_PI / 180) * sin(L[i] * M_PI / 180);
+				sz[i] = (R - r_remaining) * sin(B[i] * M_PI / 180);
+
+				x[i] = (R + H[i]) * cos(B[i] * M_PI / 180) * cos(L[i] * M_PI / 180);
+				y[i] = (R + H[i]) * cos(B[i] * M_PI / 180) * sin(L[i] * M_PI / 180);
+				z[i] = (R + H[i]) * sin(B[i] * M_PI / 180);
+
+				q[i] = 0.00001 * Q;
+				d2U[i] = D2U;
+
+				// std::cout << B << " " << L << " " << H << " " << Q << " " << D2U << std::endl;
+				// std::cout << sx[i] << " " << sy[i] << " " << sz[i] << " " << x[i] << " " << y[i] << " " << z[i] << " " << q[i] << " " << d2U[i] << std::endl << std::endl;
+				i++;
+			}
+
+			dataFile.close();
+		}
+	}
 	auto endLoad = std::chrono::high_resolution_clock::now();
 
 	auto startPrint3 = std::chrono::high_resolution_clock::now();
-	printArrayVector3("x", x, y, z, 5);
+	if (myrank == 0) printArrayVector3("x", x, y, z, 5);
 	auto endPrint3 = std::chrono::high_resolution_clock::now();
-	printArrayVector3("s", sx, sy, sz, 5);
+	if (myrank == 0) printArrayVector3("s", sx, sy, sz, 5);
 
 	auto startPrint1 = std::chrono::high_resolution_clock::now();
-	printArray1("q", q, 5);
+	if (myrank == 0) printArray1("q", q, 5);
 	auto endPrint1 = std::chrono::high_resolution_clock::now();
-	printArray1("d2U/dn2", d2U, 5);
+	if (myrank == 0) printArray1("d2U/dn2", d2U, 5);
 
-	double **dG = new double*[N];
-	double **G = new double*[N];
-	for (int i = 0; i < N; i++) {
-		dG[i] = new double[N];
-		G[i] = new double[N];
+	// array broadcasts
+	MPI_Bcast(q, N, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+
+	MPI_Bcast(x, N, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+	MPI_Bcast(y, N, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+	MPI_Bcast(z, N, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+
+	MPI_Bcast(sx, N, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+	MPI_Bcast(sy, N, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+	MPI_Bcast(sz, N, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+
+	// local/last packet sizes
+	nlocal = (N / nprocs) + 1;
+	nlast = N - (nprocs - 1) * nlocal;
+
+	// packet indexing
+	istart = nlocal * myrank;
+	if (myrank == nprocs - 1)
+		iend = N - 1;
+	else
+		iend = istart + nlocal - 1;
+
+	// Calculating system matrices from point data:
+	auto startMatrixGen = std::chrono::high_resolution_clock::now();
+
+	double **dGLocal = new double*[nlocal]; // system matrix packet
+	double *qLocal = new double[nlocal]; // rhs packet
+	for (int i = 0; i < nlocal; i++) {
+		dGLocal[i] = new double[N];
 	}
 
-	auto startMatrixGen = std::chrono::high_resolution_clock::now();
-	// getMatrices(dG, G, x, y, z, sx, sy, sz); // :(
-	// Calculating system matrices from point data:
+	int iGlobal = 0;
+	for (int i = 0; i < nlocal; i++) {
+		iGlobal = i + istart;
 
-	for (int i = 0; i < N; i++) {
+		// sys matrix packet filling
 		for (int j = 0; j < N; j++) {
-			double dx = x[i] - sx[j];
-			double dy = y[i] - sy[j];
-			double dz = z[i] - sz[j];
+			double dx = x[iGlobal] - sx[j];
+			double dy = y[iGlobal] - sy[j];
+			double dz = z[iGlobal] - sz[j];
 
 			double d_norm = sqrt(dx * dx + dy * dy + dz * dz);
 
-			double nx = sx[i] / (R - r_remaining);
-			double ny = sy[i] / (R - r_remaining);
-			double nz = sz[i] / (R - r_remaining);
+			double nx = sx[iGlobal] / (R - r_remaining);
+			double ny = sy[iGlobal] / (R - r_remaining);
+			double nz = sz[iGlobal] / (R - r_remaining);
 
 			double dot = dx * nx + dy * ny + dz * nz;
 
-			dG[i][j] = dot / (4 * M_PI * d_norm * d_norm * d_norm); // dG[i][j]/dn[i]
-			G[i][j] = 1 / (4 * M_PI * d_norm);
-			if (isnan(dG[i][j])) {
+			dGLocal[i][j] = dot / (4 * M_PI * d_norm * d_norm * d_norm);
+
+			if (isnan(dGLocal[i][j]) && myrank == 0) {
 				std::cout << "NAN!: dG[" << i << "][" << j << "] : d_norm = " << d_norm << std::endl;
 				std::cout << "dx = " << dx << ", dy = " << dy << ", dz = " << dz << std::endl;
-			}
-			if (isnan(G[i][j])) {
-				std::cout << "NAN!: G[" << i << "][" << j << "] : d_norm = " << d_norm << std::endl;
-				std::cout << "dx = " << dx << ", dy = " << dy << ", dz = " << dz << std::endl;
+
+				return 0;
 			}
 		}
-	}
 
+		// rhs packet filling:
+		qLocal[i] = q[iGlobal];
+		//q[i] = qConst;
+	}
+	// getMatrices(dG, G, x, y, z, sx, sy, sz); // :(
 	auto endMatrixGen = std::chrono::high_resolution_clock::now();
 
-	auto startMatrixPrint = std::chrono::high_resolution_clock::now();
-	printArray2("dG/dn", dG, 4);
-	auto endMatrixPrint = std::chrono::high_resolution_clock::now();
-	printArray2("G", G, 4);
+	MPI_Allgather(qLocal, nlocal, MPI_DOUBLE, q, nlocal, MPI_DOUBLE, MPI_COMM_WORLD);
+
 
 	double *alphas = new double[N]; // unknown alpha coeffs
 	double *u = new double[N]; // potential solution
@@ -418,6 +501,10 @@ int main() {
 	// ========== Bi-CGSTAB Implementation inside main() =======================================
 	auto startBi_CGSTAB = std::chrono::high_resolution_clock::now();
 
+	if (myrank == 0) {
+	std::cout << "==================================================" << std::endl;
+	std::cout << "----------- Initializing Bi-CGSTAB Method --------" << std::endl;
+	}
 	// ctrl. constants
 	int maxIter = 100;
 	double tol = 1e-5;
@@ -437,7 +524,6 @@ int main() {
 	double *s = new double[N];
 
 	double *tmp = new double[N];
-	double *tmp1 = new double[N];
 
 	// iter scalars
 	double alpha, beta, omega;
@@ -447,38 +533,51 @@ int main() {
 	// r0 = b - A x0
 	// choose rp0 such that <r0, rp0> != 0
 	// p0 = r0
-	for (int i = 0; i < N; i++) {
-		r_curr[i] = q[i];
-		for (int j = 0; j < N; j++) {
-			r_curr[i] -= dG[i][j] * x_curr[j];
-		}
-		rp0[i] = r_curr[i] + 100;
-		p_curr[i] = r_curr[i];
-	}
-	std::cout << "==================================================" << std::endl;
-	std::cout << "----------- Initializing Bi-CGSTAB Method --------" << std::endl;
-	printArray2("systemMatrix", dG, 4);
-	printArray1("systemRhs", q, 5);
-	printArray1("x0", x_curr, 2);
-	printArray1("r0", r_curr, 5);
 
-	std::cout << "--------------------------------------------------" << std::endl;
-	std::cout << "------------ Launching iterations ----------------" << std::endl;
+	// local vector packets:
+	double *r_curr_local = new double[nlocal];
+	double *rp0_local = new double[nlocal];
+	double *p_curr_local = new double[nlocal];
+	for (int i = 0; i < nlocal; i++) {
+		iGlobal = i + istart;
+		r_curr_local[i] = q[iGlobal];
+		for (int j = 0; j < N; j++) {
+			r_curr_local[i] -= dGLocal[i][j] * x_curr[j];
+		}
+		rp0_local[i] = r_curr_local[i] + 100;
+		p_curr_local[i] = r_curr_local[i];
+	}
+
+	// gathering vector packets:
+	MPI_Allgather(r_curr_local, nlocal, MPI_DOUBLE, r_curr, nlocal, MPI_DOUBLE, MPI_COMM_WORLD);
+	MPI_Allgather(rp0_local, nlocal, MPI_DOUBLE, rp0, nlocal, MPI_DOUBLE, MPI_COMM_WORLD);
+	MPI_Allgather(p_curr_local, nlocal, MPI_DOUBLE, p_curr, nlocal, MPI_DOUBLE, MPI_COMM_WORLD);
+
+	if (myrank == 0) std::cout << "------------ Launching iterations ----------------" << std::endl;
 	// begin iterations
 	for (int k = 0; k < maxIter; k++) {
-		std::cout << "::: iter : " << k << std::endl;
+		if (myrank == 0) std::cout << "::: iter : " << k << std::endl;
 
 		// alpha[k] = <r[k], rp0> / <Ap[k], rp0>
 
 		double num = 0.; double den = 0.;
 		for (int i = 0; i < N; i++) {
-			tmp[i] = 0.;
-			for (int j = 0; j < N; j++) {
-				tmp[i] += dG[i][j] * p_curr[j];
-			}
 			num += r_curr[i] * rp0[i];
+		}
+
+		double *tmp_local = new double[nlocal];
+		for (int i = 0; i < nlocal; i++) {
+			tmp_local[i] = 0;
+			for (int j = 0; j < N; j++) {
+				tmp_local[i] += dGLocal[i][j] * p_curr[j];
+			}
+		}
+		MPI_Allgather(tmp_local, nlocal, MPI_DOUBLE, tmp, nlocal, MPI_DOUBLE, MPI_COMM_WORLD);
+
+		for (int i = 0; i < N; i++) {
 			den += tmp[i] * rp0[i];
 		}
+
 		alpha = num / den;
 
 		// s[k] = r[k] - alpha[k] * A p[k]
@@ -488,7 +587,8 @@ int main() {
 		}
 
 		double norm = vectorNorm(s);
-		std::cout << "||s|| = " << norm << std::endl;
+
+		if (myrank == 0) std::cout << "||s|| = " << norm << std::endl;
 		if (norm < tol) {
 			// x[k + 1] = x[k] + alpha[k] * p[k]
 
@@ -496,21 +596,26 @@ int main() {
 				x_next[i] = x_curr[i] + alpha * p_curr[i];
 			}
 
-			std::cout << "||s|| < tol = " << tol << ", exiting iterations" << std::endl;
+			if (myrank == 0) std::cout << "||s|| < tol = " << tol << ", exiting iterations" << std::endl;
+			delete[] tmp_local;
 			break;
 		}
 
 		// omega[k] = <A s[k], s[k]> / <A s[k], A s[k]>
 
 		num = 0; den = 0;
-		for (int i = 0; i < N; i++) {
-			tmp[i] = 0;
+		for (int i = 0; i < nlocal; i++) {
+			tmp_local[i] = 0;
 			for (int j = 0; j < N; j++) {
-				tmp[i] += dG[i][j] * s[j];
+				tmp_local[i] += dGLocal[i][j] * s[j];
 			}
+		}
+		MPI_Allgather(tmp_local, nlocal, MPI_DOUBLE, tmp, nlocal, MPI_DOUBLE, MPI_COMM_WORLD);
+
+		for (int i = 0; i < N; i++) {
 			num += tmp[i] * s[i];
 			den += tmp[i] * tmp[i];
-		}
+		}		
 		omega = num / den;
 
 		// x[k + 1] = x[k] + alpha[k] * p[k] + omega[k] * s[k]
@@ -526,9 +631,9 @@ int main() {
 		}
 
 		norm = vectorNorm(r_next);
-		std::cout << "||r[k + 1]|| = " << norm << std::endl;
+		if (myrank == 0) std::cout << "||r[k + 1]|| = " << norm << std::endl;
 		if (norm < tol) {
-			std::cout << "||r[k + 1]|| < tol = " << tol << ", exiting iterations" << std::endl;
+			if (myrank == 0) std::cout << "||r[k + 1]|| < tol = " << tol << ", exiting iterations" << std::endl;
 			break;
 		}
 
@@ -544,16 +649,24 @@ int main() {
 
 		// p[k + 1] = r[k + 1] + beta[k] * (p[k] - omega[k] * A p[k])
 
-		for (int i = 0; i < N; i++) {
-			tmp[i] = 0;
+		iGlobal = 0;
+		for (int i = 0; i < nlocal; i++) {
+			iGlobal = i + istart;
+			tmp_local[i] = 0;
 			for (int j = 0; j < N; j++) {
-				tmp[i] += dG[i][j] * p_curr[j];
+				tmp_local[i] += dGLocal[i][j] * p_curr[j];
 			}
+			// p_next[iGlobal] = r_next[iGlobal] + beta * (p_curr[iGlobal] - omega * tmp[i]);
+		}
+		MPI_Allgather(tmp_local, nlocal, MPI_DOUBLE, tmp, nlocal, MPI_DOUBLE, MPI_COMM_WORLD);
+		delete[] tmp_local;
+
+		for (int i = 0; i < N; i++) {
 			p_next[i] = r_next[i] + beta * (p_curr[i] - omega * tmp[i]);
 		}
 
 		norm = fabs(vectorDot(r_next, rp0));
-		std::cout << "|< r[k + 1], rp0 >| = " << norm << std::endl;
+		if (myrank == 0) std::cout << "|< r[k + 1], rp0 >| = " << norm << std::endl;
 		if (norm < tol) {
 			// rp0 = r[k + 1]; p[k + 1] = r[k + 1]
 			
@@ -569,66 +682,83 @@ int main() {
 			p_curr[i] = p_next[i];
 		}
 
-		std::cout << "===> finishing iter " << k << std::endl;
+		if (myrank == 0) std::cout << "===> finishing iter " << k << std::endl;
 	}
 
 	// result: x = x_next
 	for (int i = 0; i < N; i++) alphas[i] = x_next[i];
 
 	// clean up
+	delete[] r_curr_local; delete[] rp0_local; delete[] p_curr_local;
+
 	delete[] x_curr; delete[] x_next;
 	delete[] r_curr; delete[] r_next;
 	delete[] p_curr; delete[] p_next;
-	delete[] s; delete[] tmp; delete[] tmp1;
+	delete[] s;
 
 	auto endBi_CGSTAB = std::chrono::high_resolution_clock::now();
 	// ========================= Solution done ===============================================
 
 	// print solution
-	printArray1("alphas", alphas, 8);
+	if (myrank == 0) printArray1("alphas", alphas, 8);
 
 	// potential solution G . alphas = u
-	auto startMMult = std::chrono::high_resolution_clock::now();
-	
-	for (int i = 0; i < N; i++) {
+	auto startMMult = std::chrono::high_resolution_clock::now();	
+	for (int i = 0; i < nlocal; i++) {
 		u[i] = 0;
 		for (int j = 0; j < N; j++) {
-			u[i] += G[i][j] * alphas[j];
+			double dx = x[i] - sx[j];
+			double dy = y[i] - sy[j];
+			double dz = z[i] - sz[j];
+
+			double d = sqrt(dx * dx + dy * dy + dz * dz);
+			double G = 1 / (4 * M_PI * d);
+
+			u[i] += G * alphas[j];
 		}
 	}
-
 	auto endMMult = std::chrono::high_resolution_clock::now();
 
-	printArray1("u", u, 8);
+	if (myrank == 0) {
+		printArray1("u", u, 8);
+		
+		std::fstream dataOut;
+		dataOut.open("data.dat", std::fstream::out);
+		if (!dataOut.is_open()) {
+			std::cout << "unable to open output file data.dat!" << std::endl;
+			return 0;
+		}
 
-	writeData(B, L, u);
+		for (int i = 0; i < N; i++) {
+			dataOut << B[i] << " " << L[i] << " " << u[i] << std::endl;
+		}
 
-	// ================================ Summary ============================================
+		dataOut.close();
 
-	printf("\n============================================================================\n");
-	printf("======================= Program summary =====================================\n");
-	std::cout << "data size = " << N << std::endl;
-	std::chrono::duration<double> elapsedTotal = (endMMult - startLoad);
-	std::cout << "total runtime :    " << elapsedTotal.count() << " s" << std::endl;
-	std::cout << "--------------------------------------------------------------------------" << std::endl;
-	std::chrono::duration<double> elapsedLoad = (endLoad - startLoad);
-	std::cout << "loading data file :    " << elapsedLoad.count() << " s" << std::endl;
-	std::chrono::duration<double> elapsedPrint3 = (endPrint3 - startPrint3);
-	std::cout << "printing vector 3 array :    " << elapsedPrint3.count() << " s" << std::endl;
-	std::chrono::duration<double> elapsedPrint1 = (endPrint1 - startPrint1);
-	std::cout << "printing vector 1 array :    " << elapsedPrint3.count() << " s" << std::endl;
-	std::chrono::duration<double> elapsedPrintMatrix = (endMatrixPrint - startMatrixPrint);
-	std::cout << "printing matrix array :    " << elapsedPrintMatrix.count() << " s" << std::endl;
-	std::cout << "..........................................................................." << std::endl;
-	std::chrono::duration<double> elapsedMatrixGen = (endMatrixGen - startMatrixGen);
-	std::cout << "generating system matrix :    " << elapsedMatrixGen.count() << " s" << std::endl;
-	std::chrono::duration<double> elapsedMMult = (endMMult - startMMult);
-	std::cout << "matrix * vector multiplication :    " << elapsedMMult.count() << " s" << std::endl;
-	std::cout << ".... Bi-CGSTAB: .........................................................." << std::endl;
-	std::chrono::duration<double> elapsedBi_CGSTAB = (endBi_CGSTAB - startBi_CGSTAB);
-	std::cout << "Bi-CGSTAB solution :    " << elapsedBi_CGSTAB.count() << " s" << std::endl;
-	std::cout << "--------------------------------------------------------------------------" << std::endl;
+		// ================================ Summary ============================================
 
+		printf("\n============================================================================\n");
+		printf("======================= Program summary =====================================\n");
+		std::cout << "data size = " << N << std::endl;
+		std::chrono::duration<double> elapsedTotal = (endMMult - startLoad);
+		std::cout << "total runtime :    " << elapsedTotal.count() << " s" << std::endl;
+		std::cout << "--------------------------------------------------------------------------" << std::endl;
+		std::chrono::duration<double> elapsedLoad = (endLoad - startLoad);
+		std::cout << "loading data file :    " << elapsedLoad.count() << " s" << std::endl;
+		std::chrono::duration<double> elapsedPrint3 = (endPrint3 - startPrint3);
+		std::cout << "printing vector 3 array :    " << elapsedPrint3.count() << " s" << std::endl;
+		std::chrono::duration<double> elapsedPrint1 = (endPrint1 - startPrint1);
+		std::cout << "printing vector 1 array :    " << elapsedPrint3.count() << " s" << std::endl;
+		std::cout << "..........................................................................." << std::endl;
+		std::chrono::duration<double> elapsedMatrixGen = (endMatrixGen - startMatrixGen);
+		std::cout << "generating system matrix :    " << elapsedMatrixGen.count() << " s" << std::endl;
+		std::chrono::duration<double> elapsedMMult = (endMMult - startMMult);
+		std::cout << "matrix * vector multiplication :    " << elapsedMMult.count() << " s" << std::endl;
+		std::cout << ".... Bi-CGSTAB: .........................................................." << std::endl;
+		std::chrono::duration<double> elapsedBi_CGSTAB = (endBi_CGSTAB - startBi_CGSTAB);
+		std::cout << "Bi-CGSTAB solution :    " << elapsedBi_CGSTAB.count() << " s" << std::endl;
+		std::cout << "--------------------------------------------------------------------------" << std::endl;
+	}
 
 	// clean up
 	delete[] x; delete[] y; delete[] z;
@@ -636,9 +766,11 @@ int main() {
 	delete[] q; delete[] d2U;
 
 	for (int i = 0; i < N; i++) {
-		delete[] dG[i]; delete[] G[i];
+		delete[] dGLocal[i];
 	}
-	delete[] dG; delete[] G;
+	delete[] dGLocal;
+
+	MPI_Finalize();
 
 	return 1;
 }
