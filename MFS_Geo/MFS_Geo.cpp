@@ -493,9 +493,7 @@ int main(int argc, char **argv) {
 
 	// Bi-CGSTAB solve:
 	// NOTE: This has to be done inside the main() function
-	// auto startBi_CGSTAB = std::chrono::high_resolution_clock::now();
 	// Bi_CGSTAB_solve(dG, q, alphas); // you had a good life, but I can't use you! :'(
-	// auto endBi_CGSTAB = std::chrono::high_resolution_clock::now();
 
 	// =========================================================================================
 	// ========== Bi-CGSTAB Implementation inside main() =======================================
@@ -506,7 +504,7 @@ int main(int argc, char **argv) {
 	std::cout << "----------- Initializing Bi-CGSTAB Method --------" << std::endl;
 	}
 	// ctrl. constants
-	int maxIter = 100;
+	int maxIter = 1000;
 	double tol = 1e-5;
 
 	// iter vectors
