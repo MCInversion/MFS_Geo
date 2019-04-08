@@ -595,7 +595,6 @@ int main(int argc, char **argv) {
 			}
 
 			if (myrank == 0) std::cout << "||s|| < tol = " << tol << ", exiting iterations" << std::endl;
-			delete[] tmp_local;
 			break;
 		}
 
@@ -617,14 +616,10 @@ int main(int argc, char **argv) {
 		omega = num / den;
 
 		// x[k + 1] = x[k] + alpha[k] * p[k] + omega[k] * s[k]
-
-		for (int i = 0; i < N; i++) {
-			x_next[i] = x_curr[i] + alpha * p_curr[i] + omega * s[i];
-		}
-
 		// r[k + 1] = s[k] - omega[k] * A s[k]
 
 		for (int i = 0; i < N; i++) {
+			x_next[i] = x_curr[i] + alpha * p_curr[i] + omega * s[i];
 			r_next[i] = s[i] - omega * tmp[i];
 		}
 
@@ -647,14 +642,11 @@ int main(int argc, char **argv) {
 
 		// p[k + 1] = r[k + 1] + beta[k] * (p[k] - omega[k] * A p[k])
 
-		iGlobal = 0;
 		for (int i = 0; i < nlocal; i++) {
-			iGlobal = i + istart;
 			tmp_local[i] = 0;
 			for (int j = 0; j < N; j++) {
 				tmp_local[i] += dGLocal[i][j] * p_curr[j];
 			}
-			// p_next[iGlobal] = r_next[iGlobal] + beta * (p_curr[iGlobal] - omega * tmp[i]);
 		}
 		MPI_Allgather(tmp_local, nlocal, MPI_DOUBLE, tmp, nlocal, MPI_DOUBLE, MPI_COMM_WORLD);
 		delete[] tmp_local;
