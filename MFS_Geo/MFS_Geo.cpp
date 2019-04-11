@@ -11,8 +11,14 @@ double r_remaining = 500000; // [m]
 // const char* dataFilename = "BL-1298.dat";
 // const char* dataFilename = "BL-3602.dat";
 const char* dataFilename = "BL-8102.dat";
-// const char* dataFilename = "BL-32402.dat";
-int N = 8102; // dataset size;
+// const char* dataFilename = "BL-32402.dat"; // do not load unless you want your PC to freeze
+
+// dataset size
+// int N = 902;
+// int N = 1298;
+// int N = 3602;
+int N = 8102;
+// int N = 32402;
 
 // 
 // NOTE: data arrays have to be initialized outside of main for large datasets because of the max stack size
