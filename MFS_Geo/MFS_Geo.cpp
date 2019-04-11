@@ -9,9 +9,55 @@ double r_remaining = 500000; // [m]
 
 // const char* dataFilename = "BL-902.dat";
 // const char* dataFilename = "BL-1298.dat";
-const char* dataFilename = "BL-3602.dat";
-// const char* dataFilename = "BL-8102.dat";
-int N = 3602; // dataset size;
+// const char* dataFilename = "BL-3602.dat";
+const char* dataFilename = "BL-8102.dat";
+// const char* dataFilename = "BL-32402.dat";
+int N = 8102; // dataset size;
+
+// 
+// NOTE: data arrays have to be initialized outside of main for large datasets because of the max stack size
+//
+double *B = new double[N];
+double *L = new double[N];
+double *H = new double[N];
+
+double *x = new double[N];
+double *y = new double[N];
+double *z = new double[N];
+
+double *sx = new double[N];
+double *sy = new double[N];
+double *sz = new double[N];
+
+double *q = new double[N];
+double *d2U = new double[N];
+
+double *alphas = new double[N]; // unknown alpha coeffs
+double *u = new double[N]; // potential solution
+
+// Bi-CGSTAB
+// ctrl. constants
+int maxIter = 1000;
+double tol = 2e-5;
+
+// iter vectors
+double *x_curr = new double[N];
+double *x_next = new double[N];
+
+double *r_curr = new double[N];
+double *r_next = new double[N];
+
+double *rp0 = new double[N];
+
+double *p_curr = new double[N];
+double *p_next = new double[N];
+
+double *s = new double[N];
+
+double *tmp = new double[N];
+
+// iter scalars
+double alpha, beta, omega;
 
 void printArray1 (std::string name, double *a, int printLim, bool inRow = true) {
 	if (inRow) {
@@ -331,21 +377,6 @@ void writeData(double *B, double *L, double *u) {
 }
 
 int main(int argc, char **argv) {
-	double *B = new double[N];
-	double *L = new double[N];
-	double *H = new double[N];
-
-	double *x = new double[N];
-	double *y = new double[N];
-	double *z = new double[N];
-
-	double *sx = new double[N];
-	double *sy = new double[N];
-	double *sz = new double[N];
-
-	double *q = new double[N];
-	double *d2U = new double[N];
-
 	// MPI Vars:
 	int nprocs, myrank;
 	int istart, iend, nlocal = 0, nlast = 0;
@@ -355,8 +386,7 @@ int main(int argc, char **argv) {
 	MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
 
 	auto startLoad = std::chrono::high_resolution_clock::now();
-	if (myrank == 0) {		
-		// loadPointData(B, L, H, x, y, z, sx, sy, sz, q, d2U); :(
+	if (myrank == 0) {
 		printf("Loading data ... \n");
 
 		std::fstream dataFile;
@@ -482,19 +512,13 @@ int main(int argc, char **argv) {
 		qLocal[i] = q[iGlobal];
 		//q[i] = qConst;
 	}
-	// getMatrices(dG, G, x, y, z, sx, sy, sz); // :(
 	auto endMatrixGen = std::chrono::high_resolution_clock::now();
 
 	MPI_Allgather(qLocal, nlocal, MPI_DOUBLE, q, nlocal, MPI_DOUBLE, MPI_COMM_WORLD);
 
-
-	double *alphas = new double[N]; // unknown alpha coeffs
-	double *u = new double[N]; // potential solution
+	std::cout << "p" << myrank << " range: " << istart << " - " << iend << ", block size: " << nlocal << ", nlast = " << nlast << std::endl;
 
 	// Bi-CGSTAB solve:
-	// NOTE: This has to be done inside the main() function
-	// Bi_CGSTAB_solve(dG, q, alphas); // you had a good life, but I can't use you! :'(
-
 	// =========================================================================================
 	// ========== Bi-CGSTAB Implementation inside main() =======================================
 	auto startBi_CGSTAB = std::chrono::high_resolution_clock::now();
@@ -503,28 +527,6 @@ int main(int argc, char **argv) {
 	std::cout << "==================================================" << std::endl;
 	std::cout << "----------- Initializing Bi-CGSTAB Method --------" << std::endl;
 	}
-	// ctrl. constants
-	int maxIter = 1000;
-	double tol = 1e-5;
-
-	// iter vectors
-	double *x_curr = new double[N];
-	double *x_next = new double[N];
-
-	double *r_curr = new double[N];
-	double *r_next = new double[N];
-
-	double *rp0 = new double[N];
-
-	double *p_curr = new double[N];
-	double *p_next = new double[N];
-
-	double *s = new double[N];
-
-	double *tmp = new double[N];
-
-	// iter scalars
-	double alpha, beta, omega;
 
 	// x0 = (1000,1000,...,1000)
 	for (int i = 0; i < N; i++) x_curr[i] = 1000.;
@@ -536,6 +538,7 @@ int main(int argc, char **argv) {
 	double *r_curr_local = new double[nlocal];
 	double *rp0_local = new double[nlocal];
 	double *p_curr_local = new double[nlocal];
+
 	for (int i = 0; i < nlocal; i++) {
 		iGlobal = i + istart;
 		r_curr_local[i] = q[iGlobal];
@@ -627,6 +630,7 @@ int main(int argc, char **argv) {
 		if (myrank == 0) std::cout << "||r[k + 1]|| = " << norm << std::endl;
 		if (norm < tol) {
 			if (myrank == 0) std::cout << "||r[k + 1]|| < tol = " << tol << ", exiting iterations" << std::endl;
+			// delete[] tmp_local;
 			break;
 		}
 
@@ -649,7 +653,7 @@ int main(int argc, char **argv) {
 			}
 		}
 		MPI_Allgather(tmp_local, nlocal, MPI_DOUBLE, tmp, nlocal, MPI_DOUBLE, MPI_COMM_WORLD);
-		delete[] tmp_local;
+		// delete[] tmp_local;
 
 		for (int i = 0; i < N; i++) {
 			p_next[i] = r_next[i] + beta * (p_curr[i] - omega * tmp[i]);
@@ -678,35 +682,32 @@ int main(int argc, char **argv) {
 	// result: x = x_next
 	for (int i = 0; i < N; i++) alphas[i] = x_next[i];
 
-	// clean up
-	delete[] r_curr_local; delete[] rp0_local; delete[] p_curr_local;
-
-	delete[] x_curr; delete[] x_next;
-	delete[] r_curr; delete[] r_next;
-	delete[] p_curr; delete[] p_next;
-	delete[] s;
-
 	auto endBi_CGSTAB = std::chrono::high_resolution_clock::now();
 	// ========================= Solution done ===============================================
 
 	// print solution
 	if (myrank == 0) printArray1("alphas", alphas, 8);
 
+	double *u_local = new double[nlocal];
 	// potential solution G . alphas = u
+	iGlobal = 0;
 	auto startMMult = std::chrono::high_resolution_clock::now();	
 	for (int i = 0; i < nlocal; i++) {
-		u[i] = 0;
+		iGlobal = istart + i;
+		u_local[i] = 0;
 		for (int j = 0; j < N; j++) {
-			double dx = x[i] - sx[j];
-			double dy = y[i] - sy[j];
-			double dz = z[i] - sz[j];
+			double dx = x[iGlobal] - sx[j];
+			double dy = y[iGlobal] - sy[j];
+			double dz = z[iGlobal] - sz[j];
 
 			double d = sqrt(dx * dx + dy * dy + dz * dz);
 			double G = 1 / (4 * M_PI * d);
 
-			u[i] += G * alphas[j];
+			u_local[i] += G * alphas[j];
 		}
 	}
+	MPI_Allgather(u_local, nlocal, MPI_DOUBLE, u, nlocal, MPI_DOUBLE, MPI_COMM_WORLD);
+	// delete[] u_local;
 	auto endMMult = std::chrono::high_resolution_clock::now();
 
 	if (myrank == 0) {
@@ -750,17 +751,12 @@ int main(int argc, char **argv) {
 		std::cout << "--------------------------------------------------------------------------" << std::endl;
 	}
 
-	// clean up
-	delete[] x; delete[] y; delete[] z;
-	delete[] sx; delete[] sy; delete[] sz;
-	delete[] q; delete[] d2U;
+	MPI_Finalize();
 
 	for (int i = 0; i < N; i++) {
 		delete[] dGLocal[i];
 	}
 	delete[] dGLocal;
-
-	MPI_Finalize();
 
 	return 1;
 }
