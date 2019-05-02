@@ -12,7 +12,7 @@
 
 // global constants
 double R = 6378000.; // Earth radius [m]
-double r_remaining = 300000; // [m]
+double r_remaining = 150000; // [m]
 //double GM = 389600.5; // [km^3 * s^(-1)]
 //double uExact = GM / R; // exact surface potential
 //double qExact = GM / (R * R); // surface acceleration
@@ -114,23 +114,23 @@ double vectorNorm (double *a) {
 
 
 int main(int argc, char **argv) {
-	double *B = new double[N];
-	double *L = new double[N];
-	double *H = new double[N];
+	double *B = new double[N + 10];
+	double *L = new double[N + 10];
+	double *H = new double[N + 10];
 
-	double *x = new double[N];
-	double *y = new double[N];
-	double *z = new double[N];
+	double *x = new double[N + 10];
+	double *y = new double[N + 10];
+	double *z = new double[N + 10];
 
-	double *sx = new double[N];
-	double *sy = new double[N];
-	double *sz = new double[N];
+	double *sx = new double[N + 10];
+	double *sy = new double[N + 10];
+	double *sz = new double[N + 10];
 
-	double *q = new double[N];
-	double *d2U = new double[N];
+	double *q = new double[N + 10];
+	double *d2U = new double[N + 10];
 
-	double *alphas = new double[N]; // unknown alpha coeffs
-	double *u = new double[N]; // potential solution
+	double *alphas = new double[N + 10]; // unknown alpha coeffs
+	double *u = new double[N + 10]; // potential solution
 
 	// Bi-CGSTAB
 	// ctrl. constants
@@ -138,20 +138,20 @@ int main(int argc, char **argv) {
 	double tol = 2e-5;
 
 	// iter vectors
-	double *x_curr = new double[N];
-	double *x_next = new double[N];
+	double *x_curr = new double[N + 10];
+	double *x_next = new double[N + 10];
 
-	double *r_curr = new double[N];
-	double *r_next = new double[N];
+	double *r_curr = new double[N + 10];
+	double *r_next = new double[N + 10];
 
-	double *rp0 = new double[N];
+	double *rp0 = new double[N + 10];
 
-	double *p_curr = new double[N];
-	double *p_next = new double[N];
+	double *p_curr = new double[N + 10];
+	double *p_next = new double[N + 10];
 
-	double *s = new double[N];
+	double *s = new double[N + 10];
 
-	double *tmp = new double[N];
+	double *tmp = new double[N + 10];
 
 	// iter scalars
 	double alpha, beta, omega;
@@ -409,7 +409,7 @@ int main(int argc, char **argv) {
 		if (myrank == 0) std::cout << "||r[k + 1]|| = " << norm << std::endl;
 		if (norm < tol) {
 			if (myrank == 0) std::cout << "||r[k + 1]|| < tol = " << tol << ", exiting iterations" << std::endl;
-			// delete[] tmp_local;
+			delete[] tmp_local;
 			break;
 		}
 
@@ -432,7 +432,7 @@ int main(int argc, char **argv) {
 			}
 		}
 		MPI_Allgather(tmp_local, nlocal, MPI_DOUBLE, tmp, nlocal, MPI_DOUBLE, MPI_COMM_WORLD);
-		// delete[] tmp_local;
+		delete[] tmp_local;
 
 		for (int i = 0; i < N; i++) {
 			p_next[i] = r_next[i] + beta * (p_curr[i] - omega * tmp[i]);
@@ -486,7 +486,7 @@ int main(int argc, char **argv) {
 		}
 	}
 	MPI_Allgather(u_local, nlocal, MPI_DOUBLE, u, nlocal, MPI_DOUBLE, MPI_COMM_WORLD);
-	// delete[] u_local;
+	delete u_local;
 	auto endMMult = std::chrono::high_resolution_clock::now();
 
 	if (myrank == 0) {
@@ -538,7 +538,7 @@ int main(int argc, char **argv) {
 	delete[] x_curr; delete[] x_next;
 	delete[] r_curr; delete[] r_next;
 	delete[] p_curr; delete[] p_next;
-	delete[] s; /* delete[] tmp; */
+	delete[] s; delete[] tmp;
 
 	// clean up
 	delete[] x; delete[] y; delete[] z;
